@@ -1,4 +1,6 @@
-# goStatic ![Docker Build](https://github.com/mmguero-dev/goStatic/workflows/audacity-build-push-ghcr/badge.svg)
+# goStatic
+
+![Docker Build](https://github.com/mmguero-dev/goStatic/workflows/audacity-build-push-ghcr/badge.svg)
 
 A really small, multi-arch, static web server for Docker
 
