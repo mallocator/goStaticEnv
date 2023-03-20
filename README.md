@@ -1,4 +1,4 @@
-# goStatic [![Docker Pulls](https://img.shields.io/docker/pulls/pierrezemb/gostatic.svg?style=plastic)](https://hub.docker.com/r/pierrezemb/gostatic/) [![Docker Build](https://img.shields.io/docker/build/pierrezemb/gostatic.svg?style=plastic)](https://hub.docker.com/r/pierrezemb/gostatic/) [![Build Status](https://travis-ci.org/PierreZ/goStatic.svg?branch=master)](https://travis-ci.org/PierreZ/goStatic)  [![GoDoc](https://godoc.org/github.com/PierreZ/goStatic?status.svg)](https://godoc.org/github.com/PierreZ/goStatic)
+# goStatic [![Docker Build](https://github.com/mmguero-dev/goStatic/workflows/audacity-build-push-ghcr/badge.svg)
 
 A really small, multi-arch, static web server for Docker
 
@@ -37,7 +37,7 @@ Many links should provide you with additional info to see my point of view:
 ## How to use
 
 ```bash
-docker run -d -p 80:8043 -v path/to/website:/srv/http --name goStatic pierrezemb/gostatic
+docker run -d -p 80:8043 -v path/to/website:/srv/http --name goStatic ghcr.io/mmguero-dev/gostatic
 ```
 
 ## Usage
