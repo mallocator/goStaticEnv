@@ -6,11 +6,10 @@ ARG TARGETPLATFORM
 WORKDIR /go/src/github.com/PierreZ/goStatic
 COPY . .
 
+# getting right vars from docker buildx
+# especially to handle linux/arm/v6 for example
 RUN mkdir ./bin && \
     apt-get update && apt-get install -y upx && \
-
-    # getting right vars from docker buildx
-    # especially to handle linux/arm/v6 for example
     GOOS=$(echo $TARGETPLATFORM | cut -f1 -d/) && \
     GOARCH=$(echo $TARGETPLATFORM | cut -f2 -d/) && \
     GOARM=$(echo $TARGETPLATFORM | cut -f3 -d/ | sed "s/v//" ) && \
