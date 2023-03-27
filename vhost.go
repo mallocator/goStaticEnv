@@ -22,21 +22,21 @@ func vhostFromHostname(host string) (string, error) {
 
 func vhostify(base http.Handler, f http.FileSystem) http.Handler {
 	vhosts := detectVhosts(f)
-	for path, _ := range vhosts {
-		log.Printf(path)
-	}
+	// for path, _ := range vhosts {
+	// 	log.Printf(path)
+	// }
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		vhost, err := vhostFromHostname(r.Host)
 		if err != nil {
-			log.Printf("no vhost: %s", r.Host)
+			// log.Printf("no vhost: %s", r.Host)
 			base.ServeHTTP(w, r)
 			return
 		}
 
 		host, exists := vhosts[vhost]
 		if exists {
-			log.Printf("vhost found: %s", vhost)
+			// log.Printf("vhost found: %s", vhost)
 			host.handler.ServeHTTP(w, r)
 			return
 		}
