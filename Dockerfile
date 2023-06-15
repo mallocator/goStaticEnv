@@ -1,5 +1,5 @@
 # stage 0
-FROM --platform=$BUILDPLATFORM golang:latest as builder
+FROM --platform=$BUILDPLATFORM golang:bullseye as builder
 
 ARG TARGETPLATFORM
 
