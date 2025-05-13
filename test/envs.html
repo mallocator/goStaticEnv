@@ -1,0 +1,18 @@
+<html lang="en">
+<head>
+    <title>Testing env variable replacement</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+<br />
+damn
+<h1>Testing a simple var</h1>
+<p>Test var: ${TEST_VAR}</p>
+<h1>Testing with default</h1>
+<p>Test var: ${TEST_VAR2:=using a  default}</p>
+<p>Current time: <span id="time"></span></p>
+</body>
+<script>
+    document.getElementById('time').innerHTML = new Date().toLocaleTimeString();
+</script>
+</html>

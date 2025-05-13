@@ -9,27 +9,20 @@ import (
 	"strings"
 )
 
-// authMiddleware checks basic auth
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-
 		auth := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
-
 		if len(auth) != 2 || auth[0] != "Basic" {
 			http.Error(w, "authorization failed", http.StatusUnauthorized)
 			return
 		}
-
 		payload, _ := base64.StdEncoding.DecodeString(auth[1])
 		pair := strings.SplitN(string(payload), ":", 2)
-
 		if strings.Compare(pair[0], username) != 0 || strings.Compare(pair[1], password) != 0 {
 			http.Error(w, "authorization failed", http.StatusUnauthorized)
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }
@@ -39,7 +32,6 @@ func parseAuth(auth string) {
 	if len(identity) != 2 {
 		log.Fatalln("basic auth must be like this: user:password")
 	}
-
 	username = identity[0]
 	password = identity[1]
 }
@@ -51,7 +43,6 @@ func generateRandomAuth() {
 }
 
 func generateRandomString() string {
-
 	b := make([]byte, *sizeRandom)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)

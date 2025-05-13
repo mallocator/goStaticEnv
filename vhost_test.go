@@ -27,4 +27,3 @@ func TestVhostParsing(t *testing.T) {
 		t.Errorf("Expected %s when serving %s, got %s and %v", "hello", "hello.world.fff.red", vhost, err)
 	}
 }
-

@@ -1,6 +1,3 @@
-// This small program is just a small web server created in static mode
-// in order to provide the smallest docker image possible
-
 package main
 
 import (
@@ -8,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -20,7 +16,6 @@ import (
 )
 
 var (
-	// Def of flags
 	portPtr                  = flag.Int("port", 8043, "The listening port")
 	context                  = flag.String("context", "", "The 'context' path on which files are served, e.g. 'doc' will serve the files at 'http://localhost:<port>/doc/'")
 	basePath                 = flag.String("path", "/srv/http", "The path for the static files")
@@ -71,7 +66,7 @@ func parseHeaderFlag(headerFlag string) (string, string) {
 
 var gzPool = sync.Pool{
 	New: func() interface{} {
-		w := gzip.NewWriter(ioutil.Discard)
+		w := gzip.NewWriter(io.Discard)
 		return w
 	},
 }
@@ -98,49 +93,41 @@ func handleReq(h http.Handler) http.Handler {
 			return
 		}
 		log.Debug().Str("Method", r.Method).Str("Path", r.URL.Path).Msg("Request Handled")
+		w.Header().Del("Content-Length")
 		h.ServeHTTP(w, r)
 	})
 }
 
 func main() {
-
 	flag.Parse()
-
-	// Setting up logging output before setting up level to print out deprecation warnings
-	// UNIX Time is faster and smaller than most timestamps
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	// Set a pretty console output
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	if *logRequest {
 		log.Warn().Msg("enable-logging is deprecated in favor of log-level")
 	}
-
-	//if log-level not default and enable-logging set to true, use log-level
 	if *logLevel != "info" && *logRequest {
 		log.Warn().Msg("log-level not 'info' and enable-logging set, using log-level")
 		*logRequest = false
 	}
-
-	//if log-level is info and we have enable-logging, set log-level to debug
 	if *logLevel == "info" && *logRequest {
 		log.Warn().Msg("since enable-logging is set, setting log-level to debug")
 		*logLevel = "debug"
 	}
-
-	//setting up the logger
 	setupLogger(*logLevel)
 	log.Debug().Str("Logging Level", zerolog.GlobalLevel().String()).Msg("Logger setup...")
 
-	// sanity check
 	if len(*setBasicAuth) != 0 && !*basicAuth {
 		log.Debug().Msg("Basic Auth Set")
 		*basicAuth = true
 	}
 
-	port := ":" + strconv.FormatInt(int64(*portPtr), 10)
+	if err := checkEnvVarsInFiles(*basePath); err != nil {
+		log.Fatal().Err(err).Msg("Missing required environment variables")
+		os.Exit(1)
+	}
 
+	port := ":" + strconv.FormatInt(int64(*portPtr), 10)
 	var fileSystem http.FileSystem = http.Dir(*basePath)
 	log.Debug().Str("path", *basePath).Msg("File serve path set")
 
@@ -151,23 +138,17 @@ func main() {
 			fs:          fileSystem,
 		}
 	}
+	fileSystem = envFileSystem{fs: fileSystem}
 
 	handler := handleReq(http.FileServer(fileSystem))
-
-	// VirtualHost handler here
-	//   - this won't allow for auth/headers/etc to be
-	//     configured differently on different vhosts
-	//     if you want that, use nginx instead
 	handler = vhostify(handler, fileSystem)
 
-	// Strip /context/ prefix, if enabled
 	pathPrefix := "/"
 	if len(*context) > 0 {
 		pathPrefix = "/" + *context + "/"
 		handler = http.StripPrefix(pathPrefix, handler)
 	}
 
-	// Basic auth, if enabled
 	if *basicAuth {
 		log.Debug().Msg("Enabling Basic Auth")
 		if len(*basicAuthUser) != 0 && len(*basicAuthPass) != 0 {
@@ -185,7 +166,6 @@ func main() {
 		handler = customHeadersMiddleware(handler)
 	}
 
-	// Extra headers.
 	if len(*headerFlag) > 0 {
 		header, headerValue := parseHeaderFlag(*headerFlag)
 		if len(header) > 0 && len(headerValue) > 0 {
@@ -199,13 +179,10 @@ func main() {
 					w.Header().Set("Content-Encoding", "gzip")
 					gz := gzPool.Get().(*gzip.Writer)
 					defer gzPool.Put(gz)
-
 					gz.Reset(w)
 					defer gz.Close()
 					fileServer.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, Writer: gz}, r)
-
 				}
-
 			})
 		} else {
 			log.Warn().Msg("appendHeader misconfigured; ignoring.")
@@ -220,10 +197,8 @@ func main() {
 	}
 
 	http.Handle(pathPrefix, handler)
-
 	log.Info().Msgf("Listening at http://0.0.0.0%v %v...", port, pathPrefix)
 	if err := http.ListenAndServe(port, nil); err != nil && err != http.ErrServerClosed {
 		log.Fatal().Err(err).Msg("Server startup failed")
 	}
-
 }

@@ -1,6 +1,9 @@
-# goStatic
+# goStaticEnv
 
-![Docker Build](https://github.com/mmguero-dev/goStatic/workflows/gostatic-build-push-ghcr/badge.svg)
+This project is a fork of [mmguero-dev/goStatic](https://github.com/mmguero-dev/goStatic), with additional features and improvements. The name has been updated to **goStaticEnv** to reflect its enhanced capabilities.
+
+[![Docker Image Version (latest by date)](https://img.shields.io/docker/v/mallox/go-static-env?sort=date)](https://hub.docker.com/r/mallox/go-static-env/tags)
+[![Tests](https://github.com/mallocator/goStaticEnv/actions/workflows/test.yml/badge.svg)](https://github.com/mallocator/goStaticEnv/actions/workflows/test.yml)
 
 A really small, multi-arch, static web server for Docker
 
@@ -12,6 +15,35 @@ My goal is to create to smallest docker container for my web static files. The a
 
 Yeah, decided to drop support of unsecured HTTPS. Two-years ago, when I started GoStatic, there was no automatic HTTPS available. Nowadays, thanks to Let's Encrypt, it's really easy to do so. If you need HTTPS, I recommend [caddy](https://caddyserver.com).
 
+## About this fork
+
+goStaticEnv extends the original goStatic with support for environment variable substitution in served files. This allows you to inject environment-specific values directly into your static content at runtime, making it ideal for containerized and cloud-native deployments.
+
+## Environment Variable Substitution
+
+**Feature:**
+
+You can use environment variables in your static files using the syntax `${VARNAME}` or `${VARNAME:=default}`. When a file is served, goStaticEnv will replace these placeholders with the value of the corresponding environment variable, or with the provided default if the variable is not set.
+
+**Usage Example:**
+
+Suppose your HTML file contains:
+
+```html
+<script>
+  window.API_URL = "${API_URL:=https://api.example.com}";
+</script>
+```
+
+If you run the server with `API_URL` set in the environment, it will be replaced. If not, the default will be used.
+
+**How it works:**
+- `${VARNAME}`: Replaced with the value of `VARNAME` if set, otherwise left as-is.
+- `${VARNAME:=default}`: Replaced with the value of `VARNAME` if set, otherwise replaced with `default`.
+
+**Validation:**
+At startup, goStaticEnv will scan your static files and report an error if any required environment variables (without a default) are missing.
+
 ## Features
 
 * A fully static web server embedded in a `SCRATCH` image
@@ -21,12 +53,11 @@ Yeah, decided to drop support of unsecured HTTPS. Two-years ago, when I started 
 * More secure than official images (see below)
 * Log enabled
 * Specify custom response headers per path and filetype [(info)](./docs/header-config.md)
+* **NEW:** Environment variable substitution in static files
 
 ## Why?
 
 Because the official Golang image is wayyyy too big (around 1/2Gb as you can see below) and could be insecure.
-
-[![](https://badge.imagelayers.io/golang:latest.svg)](https://imagelayers.io/?images=golang:latest 'Get your own badge on imagelayers.io')
 
 For me, the whole point of containers is to have a light container...
 Many links should provide you with additional info to see my point of view:
@@ -39,7 +70,7 @@ Many links should provide you with additional info to see my point of view:
 ## How to use
 
 ```bash
-docker run -d -p 80:8043 -v path/to/website:/srv/http --name goStatic ghcr.io/mmguero-dev/gostatic
+docker run -d -p 80:8043 -v path/to/website:/srv/http -e API_URL=https://api.example.com --name goStatic ghcr.io/mmguero-dev/gostatic
 ```
 
 ## Usage
@@ -96,3 +127,5 @@ The second case is useful if you have multiple SPAs within the one filesystem. e
 docker buildx create --use --name=cross
 docker buildx build --platform=linux/amd64,linux/arm64,linux/arm/v5,linux/arm/v6,linux/arm/v7,darwin/amd64,darwin/arm64,windows/amd64 .
 ```
+
+
