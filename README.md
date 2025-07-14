@@ -42,7 +42,7 @@ If you run the server with `API_URL` set in the environment, it will be replaced
 - `${VARNAME:=default}`: Replaced with the value of `VARNAME` if set, otherwise replaced with `default`.
 
 **Validation:**
-At startup, goStaticEnv will scan your static files and report an error if any required environment variables (without a default) are missing.
+At startup, goStaticEnv will scan your static files and report an error if any required environment variables (without a default) are missing. You can use the `--allow-missing-env` flag to start the server with warnings instead of exiting when environment variables are missing.
 
 ## Features
 
@@ -78,6 +78,8 @@ docker run -d -p 80:8043 -v path/to/website:/srv/http -e API_URL=https://api.exa
 ```bash
 ./goStatic --help
 Usage of ./goStatic:
+  -allow-missing-env
+        Allow server to start with warnings when environment variables are missing, instead of exiting with fatal error
   -append-header HeaderName:Value
         HTTP response header, specified as HeaderName:Value that should be added to all responses.
   -context string
@@ -127,5 +129,3 @@ The second case is useful if you have multiple SPAs within the one filesystem. e
 docker buildx create --use --name=cross
 docker buildx build --platform=linux/amd64,linux/arm64,linux/arm/v5,linux/arm/v6,linux/arm/v7,darwin/amd64,darwin/arm64,windows/amd64 .
 ```
-
-

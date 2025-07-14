@@ -33,6 +33,7 @@ var (
 	headerConfigPath         = flag.String("header-config-path", "/config/headerConfig.json", "Path to the config file for custom response headers")
 	basicAuthUser            = flag.String("basic-auth-user", "", "Username for basic auth")
 	basicAuthPass            = flag.String("basic-auth-pass", "", "Password for basic auth")
+	allowMissingEnv          = flag.Bool("allow-missing-env", false, "Allow server to start with warnings when environment variables are missing, instead of exiting with fatal error")
 
 	username string
 	password string
@@ -123,8 +124,12 @@ func main() {
 	}
 
 	if err := checkEnvVarsInFiles(*basePath); err != nil {
-		log.Fatal().Err(err).Msg("Missing required environment variables")
-		os.Exit(1)
+		if *allowMissingEnv {
+			log.Warn().Err(err).Msg("Missing required environment variables, starting with warnings")
+		} else {
+			log.Fatal().Err(err).Msg("Missing required environment variables")
+			os.Exit(1)
+		}
 	}
 
 	port := ":" + strconv.FormatInt(int64(*portPtr), 10)
