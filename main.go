@@ -34,8 +34,8 @@ var (
 	basicAuthUser            = flag.String("basic-auth-user", "", "Username for basic auth")
 	basicAuthPass            = flag.String("basic-auth-pass", "", "Password for basic auth")
 	allowMissingEnv          = flag.Bool("allow-missing-env", false, "Allow server to start with warnings when environment variables are missing, instead of exiting with fatal error")
-	envIncludeDirs           = flag.String("env-include-dirs", "", "Comma-separated list of directories to include when scanning for environment variables (relative to base path)")
-	envExcludeDirs           = flag.String("env-exclude-dirs", "", "Comma-separated list of directories to exclude when scanning for environment variables (relative to base path)")
+	envInclude               = flag.String("env-include", "", "Comma-separated list of directories and files to include when scanning for environment variables (relative to base path)")
+	envExclude               = flag.String("env-exclude", "", "Comma-separated list of directories and files to exclude when scanning for environment variables (relative to base path)")
 
 	username string
 	password string
@@ -125,7 +125,7 @@ func main() {
 		*basicAuth = true
 	}
 
-	if err := checkEnvVarsInFiles(*basePath, *envIncludeDirs, *envExcludeDirs); err != nil {
+	if err := checkEnvVarsInFiles(*basePath, *envInclude, *envExclude); err != nil {
 		if *allowMissingEnv {
 			log.Warn().Err(err).Msg("Missing required environment variables, starting with warnings")
 		} else {
@@ -145,7 +145,7 @@ func main() {
 			fs:          fileSystem,
 		}
 	}
-	fileSystem = envFileSystem{fs: fileSystem}
+	fileSystem = EnvFileSystem{fs: fileSystem}
 
 	handler := handleReq(http.FileServer(fileSystem))
 	handler = vhostify(handler, fileSystem)

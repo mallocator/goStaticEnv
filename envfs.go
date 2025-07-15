@@ -11,269 +11,169 @@ import (
 	"strings"
 )
 
-type envFileSystem struct {
+type EnvFileSystem struct {
 	fs http.FileSystem
 }
 
-type envFile struct {
+type EnvFile struct {
 	*bytes.Reader
 	file         http.File
 	info         os.FileInfo
 	replacedSize int64
 }
 
-type envFileInfo struct {
+type EnvFileInfo struct {
 	os.FileInfo
 	size int64
 }
 
-func (e envFileInfo) Size() int64 {
+func (e EnvFileInfo) Size() int64 {
 	return e.size
 }
 
-func (f *envFile) Close() error {
+func (f *EnvFile) Close() error {
+	if f.file == nil {
+		return nil
+	}
 	return f.file.Close()
 }
 
-func (f *envFile) Stat() (os.FileInfo, error) {
-	return envFileInfo{FileInfo: f.info, size: f.replacedSize}, nil
+func (f *EnvFile) Stat() (os.FileInfo, error) {
+	return EnvFileInfo{FileInfo: f.info, size: f.replacedSize}, nil
 }
 
-func (f *envFile) Readdir(count int) ([]os.FileInfo, error) {
+func (f *EnvFile) Readdir(count int) ([]os.FileInfo, error) {
+	if f.file == nil {
+		return nil, fmt.Errorf("file is closed")
+	}
 	return f.file.Readdir(count)
 }
 
 var envVarPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(:=([^}]*))?}`)
 
+var fileExtensions = map[string]bool{
+	"html": true, "js": true, "css": true, "json": true, "txt": true,
+	"md": true, "xml": true, "yml": true, "yaml": true, "log": true, "bak": true,
+}
+
 func replaceEnvVars(content string) string {
 	return envVarPattern.ReplaceAllStringFunc(content, func(match string) string {
 		groups := envVarPattern.FindStringSubmatch(match)
-		name := groups[1]
-		def := groups[3]
-		val, ok := os.LookupEnv(name)
-		if !ok {
-			if def != "" || groups[2] == ":=" {
-				return def
-			}
+		if len(groups) < 2 {
 			return match
 		}
-		return val
+
+		varName := groups[1]
+		defaultValue := ""
+		hasDefault := len(groups) > 3 && groups[3] != ""
+
+		if hasDefault {
+			defaultValue = groups[3]
+		}
+
+		if value, exists := os.LookupEnv(varName); exists {
+			return value
+		}
+
+		if hasDefault || (len(groups) > 2 && groups[2] == ":=") {
+			return defaultValue
+		}
+
+		return match
 	})
 }
 
-func (e envFileSystem) Open(name string) (http.File, error) {
+func (e EnvFileSystem) Open(name string) (http.File, error) {
 	file, err := e.fs.Open(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open file %s: %w", name, err)
 	}
+
 	stat, err := file.Stat()
 	if err != nil {
 		file.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to stat file %s: %w", name, err)
 	}
+
 	if stat.IsDir() {
 		return file, nil
 	}
+
 	data, err := io.ReadAll(file)
 	if err != nil {
 		file.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to read file %s: %w", name, err)
 	}
-	newContent := replaceEnvVars(string(data))
-	replacedSize := int64(len(newContent))
-	return &envFile{Reader: bytes.NewReader([]byte(newContent)), file: file, info: stat, replacedSize: replacedSize}, nil
+
+	processedContent := replaceEnvVars(string(data))
+
+	return &EnvFile{
+		Reader:       bytes.NewReader([]byte(processedContent)),
+		file:         file,
+		info:         stat,
+		replacedSize: int64(len(processedContent)),
+	}, nil
 }
 
-func checkEnvVarsInFiles(root string, includeDirs string, excludeDirs string) error {
-	missing := map[string]struct{}{}
-
-	var includePatterns []string
-	var excludePatterns []string
-
-	if includeDirs != "" {
-		includePatterns = strings.Split(strings.TrimSpace(includeDirs), ",")
-		for i := range includePatterns {
-			includePatterns[i] = strings.TrimSpace(includePatterns[i])
-		}
-	}
-
-	if excludeDirs != "" {
-		excludePatterns = strings.Split(strings.TrimSpace(excludeDirs), ",")
-		for i := range excludePatterns {
-			excludePatterns[i] = strings.TrimSpace(excludePatterns[i])
-		}
-	}
-
-	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		relPath, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-
-		// Normalize path separators for consistent matching
-		relPath = filepath.ToSlash(relPath)
-
-		// Skip directories but check if we should process files in them
-		if info.IsDir() {
-			// Skip the root directory itself
-			if relPath == "." {
-				return nil
-			}
-
-			// Check exclude patterns first
-			if shouldExcludeDir(relPath, excludePatterns) {
-				return filepath.SkipDir
-			}
-
-			// If include patterns are specified, check if this directory should be included
-			if len(includePatterns) > 0 && !shouldIncludeDir(relPath, includePatterns) {
-				return filepath.SkipDir
-			}
-
-			return nil
-		}
-
-		// Process files - but first check if this file should be processed based on include/exclude patterns
-		// Get the directory containing this file
-		fileDir := filepath.Dir(relPath)
-
-		// If include patterns are specified, check if this file's directory is included
-		if len(includePatterns) > 0 {
-			if fileDir == "." {
-				// File is in root directory - only process if root is explicitly included
-				rootIncluded := false
-				for _, pattern := range includePatterns {
-					if pattern == "." || pattern == "" || pattern == "/" {
-						rootIncluded = true
-						break
-					}
-				}
-				if !rootIncluded {
-					return nil
-				}
-			} else {
-				// File is in a subdirectory - check if that directory should be included
-				if !shouldIncludeDir(fileDir, includePatterns) {
-					return nil
-				}
-			}
-		}
-
-		// Check if this file's directory should be excluded
-		if len(excludePatterns) > 0 && fileDir != "." {
-			if shouldExcludeDir(fileDir, excludePatterns) {
-				return nil
-			}
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		matches := envVarPattern.FindAllStringSubmatch(string(data), -1)
-		for _, match := range matches {
-			name := match[1]
-			def := match[3]
-			if _, ok := os.LookupEnv(name); !ok {
-				if def == "" && match[2] != ":=" {
-					missing[name] = struct{}{}
-				}
-			}
-		}
+func parsePatterns(patterns string) []string {
+	if patterns == "" {
 		return nil
-	})
-	if len(missing) > 0 {
-		return fmt.Errorf("missing environment variables: %v", keys(missing))
 	}
-	return nil
-}
 
-// shouldExcludeDir checks if a directory path matches any exclude patterns
-func shouldExcludeDir(dirPath string, excludePatterns []string) bool {
-	for _, pattern := range excludePatterns {
-		if matchesPattern(dirPath, pattern) {
-			return true
+	parts := strings.Split(strings.TrimSpace(patterns), ",")
+	result := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
 		}
 	}
-	return false
+	return result
 }
 
-// shouldIncludeDir checks if a directory path matches any include patterns
-func shouldIncludeDir(dirPath string, includePatterns []string) bool {
-	for _, pattern := range includePatterns {
-		if matchesPatternForInclude(dirPath, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchesPattern checks if a directory path matches a pattern
-// Supports glob patterns using filepath.Match() and intuitive prefix matching
-func matchesPattern(dirPath string, pattern string) bool {
-	// Normalize pattern
+func matchPattern(path, pattern string, isInclude bool) bool {
 	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
 
-	// Check if pattern contains glob characters
-	hasGlobChars := strings.ContainsAny(pattern, "*?[]")
+	if path == pattern {
+		return true
+	}
 
-	if hasGlobChars {
-		// Use filepath.Match for glob patterns
-		// Check exact match first
-		if matched, _ := filepath.Match(pattern, dirPath); matched {
+	if strings.ContainsAny(pattern, "*?[]") {
+		if matched, _ := filepath.Match(pattern, path); matched {
 			return true
 		}
 
-		// For path-based patterns like "docs/v*", check if the directory path matches
+		// For path-based patterns like docs/v*, check directory matching
 		if strings.Contains(pattern, "/") {
-			// This is a path-based pattern, match the full path
-			if matched, _ := filepath.Match(pattern, dirPath); matched {
+			dir := filepath.Dir(path)
+			if matched, _ := filepath.Match(pattern, dir); matched {
 				return true
 			}
-			// For include logic: check if this is a parent directory that should be traversed
-			// But only if we're checking includes, not excludes
-			// We'll handle this differently in shouldIncludeDir vs shouldExcludeDir
+
+			if isInclude {
+				patternDir := filepath.Dir(pattern)
+				if patternDir != "." && (path == patternDir || strings.HasPrefix(path, patternDir+"/") || strings.HasPrefix(patternDir, path+"/")) {
+					return true
+				}
+			}
 		} else {
-			// For simple patterns like "test-*", check individual directory components
-			pathParts := strings.Split(dirPath, "/")
+			pathParts := strings.Split(path, "/")
 			for _, part := range pathParts {
 				if matched, _ := filepath.Match(pattern, part); matched {
 					return true
 				}
 			}
-
-			// Also check if any parent directory matches
-			for i := range pathParts {
-				parentPath := strings.Join(pathParts[:i+1], "/")
-				if matched, _ := filepath.Match(pattern, parentPath); matched {
-					return true
-				}
-			}
 		}
 	} else {
-		// For non-glob patterns, use intuitive prefix/exact matching
-
-		// Exact match
-		if dirPath == pattern {
+		if strings.HasPrefix(path, pattern+"/") {
 			return true
 		}
 
-		// Check if dirPath is a subdirectory of pattern (prefix match)
-		if strings.HasPrefix(dirPath, pattern+"/") {
+		if isInclude && strings.HasPrefix(pattern, path+"/") {
 			return true
 		}
 
-		// Check if pattern is a subdirectory of dirPath (for include logic)
-		if strings.HasPrefix(pattern, dirPath+"/") {
-			return true
-		}
-
-		// Check if any part of the path matches the pattern (for excluding specific directory names anywhere)
-		pathParts := strings.Split(dirPath, "/")
+		pathParts := strings.Split(path, "/")
 		for _, part := range pathParts {
 			if part == pattern {
 				return true
@@ -284,28 +184,152 @@ func matchesPattern(dirPath string, pattern string) bool {
 	return false
 }
 
-// matchesPatternForInclude handles include logic with parent directory traversal
-func matchesPatternForInclude(dirPath string, pattern string) bool {
-	// First check if it matches normally
-	if matchesPattern(dirPath, pattern) {
+func shouldInclude(path string, includePatterns, excludePatterns []string, isFile bool) bool {
+	for _, pattern := range excludePatterns {
+		if matchPattern(path, pattern, false) {
+			return false
+		}
+	}
+
+	if len(includePatterns) == 0 {
 		return true
 	}
 
-	// For path-based include patterns, also allow parent directories to be traversed
-	if strings.ContainsAny(pattern, "*?[]") && strings.Contains(pattern, "/") {
-		// If this is a parent directory of the pattern, include it so we can traverse into it
-		if strings.HasPrefix(pattern, dirPath+"/") {
-			return true
+	for _, pattern := range includePatterns {
+		if isFile && isFilePattern(pattern) {
+			if matchesFilePattern(path, pattern) {
+				return true
+			}
+		} else {
+			if matchPattern(path, pattern, true) {
+				return true
+			}
 		}
 	}
 
 	return false
 }
 
-func keys(m map[string]struct{}) []string {
-	var k []string
-	for key := range m {
-		k = append(k, key)
+func isFilePattern(pattern string) bool {
+	if strings.HasPrefix(pattern, "*.") && !strings.Contains(pattern, "/") {
+		ext := pattern[2:]
+		return fileExtensions[ext]
 	}
-	return k
+	return strings.Contains(pattern, "/") && strings.Contains(pattern, "*") && strings.Contains(pattern, ".")
+}
+
+func matchesFilePattern(filePath, pattern string) bool {
+	pattern = filepath.ToSlash(strings.TrimSpace(pattern))
+
+	if strings.HasPrefix(pattern, "*.") && !strings.Contains(pattern, "/") {
+		ext := pattern[2:]
+		if fileExtensions[ext] {
+			filename := filepath.Base(filePath)
+			matched, _ := filepath.Match(pattern, filename)
+			return matched
+		}
+	}
+
+	if strings.Contains(pattern, "/") && strings.Contains(pattern, ".") {
+		matched, _ := filepath.Match(pattern, filePath)
+		return matched
+	}
+
+	dir := filepath.Dir(filePath)
+	return matchPattern(dir, pattern, true)
+}
+
+func hasFilePatterns(patterns []string) bool {
+	for _, pattern := range patterns {
+		if isFilePattern(pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkEnvVarsInFiles(root, includeDirs, excludeDirs string) error {
+	if root == "" {
+		return fmt.Errorf("root path cannot be empty")
+	}
+
+	includePatterns := parsePatterns(includeDirs)
+	excludePatterns := parsePatterns(excludeDirs)
+	hasFilePats := hasFilePatterns(includePatterns)
+	missing := make(map[string]struct{})
+
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		if info.IsDir() {
+			if relPath == "." {
+				return nil
+			}
+
+			if hasFilePats {
+				if !shouldInclude(relPath, nil, excludePatterns, false) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
+			if !shouldInclude(relPath, includePatterns, excludePatterns, false) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if !shouldInclude(relPath, includePatterns, excludePatterns, true) {
+			return nil
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+
+		matches := envVarPattern.FindAllStringSubmatch(string(data), -1)
+		for _, match := range matches {
+			if len(match) < 2 {
+				continue
+			}
+
+			varName := match[1]
+			defaultValue := ""
+			hasDefault := len(match) > 3 && match[3] != ""
+
+			if hasDefault {
+				defaultValue = match[3]
+			}
+
+			if _, exists := os.LookupEnv(varName); !exists {
+				if defaultValue == "" && (len(match) <= 2 || match[2] != ":=") {
+					missing[varName] = struct{}{}
+				}
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("error walking directory tree: %w", err)
+	}
+
+	if len(missing) > 0 {
+		keys := make([]string, 0, len(missing))
+		for key := range missing {
+			keys = append(keys, key)
+		}
+		return fmt.Errorf("missing environment variables: %v", keys)
+	}
+
+	return nil
 }

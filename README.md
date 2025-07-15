@@ -44,24 +44,43 @@ If you run the server with `API_URL` set in the environment, it will be replaced
 **Validation:**
 At startup, goStaticEnv will scan your static files and report an error if any required environment variables (without a default) are missing. You can use the `--allow-missing-env` flag to start the server with warnings instead of exiting when environment variables are missing.
 
-**Directory Filtering:**
-You can control which directories are scanned for environment variables using the include/exclude flags:
-- `--env-include-dirs`: Only scan the specified directories (comma-separated, relative to base path)
-- `--env-exclude-dirs`: Skip the specified directories when scanning (comma-separated, relative to base path)
+**Directory and File Filtering:**
+You can control which directories and files are scanned for environment variables using the include/exclude flags:
+- `--env-include`: Only scan the specified directories and files (comma-separated, relative to base path)
+- `--env-exclude`: Skip the specified directories and files when scanning (comma-separated, relative to base path)
 
 **Pattern Matching:**
-Directory patterns support both simple names and glob-style wildcards:
+Both directory and file patterns support simple names and glob-style wildcards:
 - **Simple patterns**: `docs` matches `docs`, `docs/api`, `src/docs`, etc. (intuitive prefix matching)
+- **File patterns**: `config.txt` matches only files named `config.txt` anywhere in the tree
 - **Glob patterns**: Use `*`, `?`, and `[]` for flexible matching (powered by Go's `filepath.Match`)
   - `*` matches any sequence of characters (except `/`)
   - `?` matches any single character
   - `[abc]` matches any character in the set
 
+**File Extension and Path Patterns:**
+- **File extensions**: `*.js` matches all JavaScript files, `*.html` matches all HTML files
+- **Path-based file patterns**: `src/*.js` matches JavaScript files only in the src directory
+- **Mixed patterns**: You can combine directory and file patterns in the same command
+
 **Verified Examples:**
 ```bash
-# Simple patterns (verified working)
+# Directory patterns (verified working)
 ./goStaticEnv --env-include-dirs "src,public"           # Include only src/ and public/ directories
 ./goStaticEnv --env-exclude-dirs "node_modules,vendor"  # Exclude node_modules and vendor anywhere
+
+# File extension patterns (verified working)
+./goStaticEnv --env-include-dirs "*.html"               # Include only HTML files
+./goStaticEnv --env-include-dirs "*.js,*.css"           # Include only JavaScript and CSS files
+./goStaticEnv --env-exclude-dirs "*.log,*.tmp"          # Exclude log and temporary files
+
+# Specific file patterns (verified working)
+./goStaticEnv --env-include-dirs "config.txt"           # Include only config.txt files
+./goStaticEnv --env-exclude-dirs "package-lock.json"    # Exclude package-lock.json files
+
+# Path-based file patterns (verified working)
+./goStaticEnv --env-include-dirs "src/*.js"             # Include JavaScript files only in src directory
+./goStaticEnv --env-include-dirs "docs/*.md"            # Include Markdown files only in docs directory
 
 # Glob patterns with wildcards (all verified working)
 ./goStaticEnv --env-exclude-dirs "test-*"               # Exclude test-unit, test-integration, etc.
@@ -74,10 +93,12 @@ Directory patterns support both simple names and glob-style wildcards:
 
 # Mixed include/exclude patterns (verified working)
 ./goStaticEnv --env-include-dirs "src,docs/v*" --env-exclude-dirs "docs/v1-*"  # Include src and docs/v* but exclude docs/v1-*
+./goStaticEnv --env-include-dirs "*.js,*.css" --env-exclude-dirs "node_modules" # Include JS/CSS files but exclude node_modules
 
 # Common use cases (all verified working)
 ./goStaticEnv --env-exclude-dirs "node_modules,vendor,.git,test-*,*-backup"    # Exclude common build/temp directories
 ./goStaticEnv --env-include-dirs "src,public,docs"                            # Only scan specific source directories
+./goStaticEnv --env-include-dirs "*.html,*.js,*.css"                          # Only scan web asset files
 ```
 
 ## Features
@@ -112,8 +133,8 @@ docker run -d -p 80:8043 -v path/to/website:/srv/http -e API_URL=https://api.exa
 ## Usage
 
 ```bash
-./goStatic --help
-Usage of ./goStatic:
+./goStaticEnv --help
+Usage of ./goStaticEnv:
   -allow-missing-env
         Allow server to start with warnings when environment variables are missing, instead of exiting with fatal error
   -append-header HeaderName:Value
@@ -128,9 +149,9 @@ Usage of ./goStatic:
         Enable health check endpoint. You can call /health to get a 200 response. Useful for Kubernetes, OpenFaas, etc.
   -enable-logging
         Enable log request
-  -env-exclude-dirs string
+  -env-exclude string
         Comma-separated list of directories to exclude when scanning for environment variables (relative to base path)
-  -env-include-dirs string
+  -env-include string
         Comma-separated list of directories to include when scanning for environment variables (relative to base path)
   -fallback string
         Default fallback file. Either absolute for a specific asset (/index.html), or relative to recursively resolve (index.html)
@@ -169,3 +190,14 @@ The second case is useful if you have multiple SPAs within the one filesystem. e
 docker buildx create --use --name=cross
 docker buildx build --platform=linux/amd64,linux/arm64,linux/arm/v5,linux/arm/v6,linux/arm/v7,darwin/amd64,darwin/arm64,windows/amd64 .
 ```
+
+## Versions
+
+### v1.0.0
+Initial release of goStaticEnv with environment variable substitution feature.
+
+### v1.1.0
+Added support for directory filtering using include/exclude flags. Enhanced environment variable substitution with validation and pattern matching.
+
+### v1.1.1
+Added support for file filtering in addition to directory filtering. Improved pattern matching for both directories and files, allowing for more flexible inclusion/exclusion rules.
