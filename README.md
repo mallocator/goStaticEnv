@@ -44,6 +44,42 @@ If you run the server with `API_URL` set in the environment, it will be replaced
 **Validation:**
 At startup, goStaticEnv will scan your static files and report an error if any required environment variables (without a default) are missing. You can use the `--allow-missing-env` flag to start the server with warnings instead of exiting when environment variables are missing.
 
+**Directory Filtering:**
+You can control which directories are scanned for environment variables using the include/exclude flags:
+- `--env-include-dirs`: Only scan the specified directories (comma-separated, relative to base path)
+- `--env-exclude-dirs`: Skip the specified directories when scanning (comma-separated, relative to base path)
+
+**Pattern Matching:**
+Directory patterns support both simple names and glob-style wildcards:
+- **Simple patterns**: `docs` matches `docs`, `docs/api`, `src/docs`, etc. (intuitive prefix matching)
+- **Glob patterns**: Use `*`, `?`, and `[]` for flexible matching (powered by Go's `filepath.Match`)
+  - `*` matches any sequence of characters (except `/`)
+  - `?` matches any single character
+  - `[abc]` matches any character in the set
+
+**Verified Examples:**
+```bash
+# Simple patterns (verified working)
+./goStaticEnv --env-include-dirs "src,public"           # Include only src/ and public/ directories
+./goStaticEnv --env-exclude-dirs "node_modules,vendor"  # Exclude node_modules and vendor anywhere
+
+# Glob patterns with wildcards (all verified working)
+./goStaticEnv --env-exclude-dirs "test-*"               # Exclude test-unit, test-integration, etc.
+./goStaticEnv --env-exclude-dirs "*-backup"             # Exclude old-backup, data-backup, etc.
+./goStaticEnv --env-include-dirs "*.tmp"                # Include config.tmp, cache.tmp, etc.
+./goStaticEnv --env-include-dirs "cache-?"              # Include cache-1, cache-2, etc.
+
+# Complex path patterns (verified working)
+./goStaticEnv --env-include-dirs "docs/v*"              # Include docs/v1, docs/v2, docs/v1-draft, etc.
+
+# Mixed include/exclude patterns (verified working)
+./goStaticEnv --env-include-dirs "src,docs/v*" --env-exclude-dirs "docs/v1-*"  # Include src and docs/v* but exclude docs/v1-*
+
+# Common use cases (all verified working)
+./goStaticEnv --env-exclude-dirs "node_modules,vendor,.git,test-*,*-backup"    # Exclude common build/temp directories
+./goStaticEnv --env-include-dirs "src,public,docs"                            # Only scan specific source directories
+```
+
 ## Features
 
 * A fully static web server embedded in a `SCRATCH` image
@@ -92,6 +128,10 @@ Usage of ./goStatic:
         Enable health check endpoint. You can call /health to get a 200 response. Useful for Kubernetes, OpenFaas, etc.
   -enable-logging
         Enable log request
+  -env-exclude-dirs string
+        Comma-separated list of directories to exclude when scanning for environment variables (relative to base path)
+  -env-include-dirs string
+        Comma-separated list of directories to include when scanning for environment variables (relative to base path)
   -fallback string
         Default fallback file. Either absolute for a specific asset (/index.html), or relative to recursively resolve (index.html)
   -header-config-path string
